@@ -1,0 +1,74 @@
+# Проверка конфигурации + деплой на Raspberry Pi через self-hosted runner.
+#
+# БЕЗОПАСНОСТЬ (репозиторий публичный, раннер исполняет код на Pi):
+#   * триггеры ТОЛЬКО push в main и ручной запуск;
+#   * НЕЛЬЗЯ добавлять pull_request / pull_request_target / issue_comment и т. п. —
+#     иначе код из форка выполнится на Pi;
+#   * сторонние actions закреплены по SHA.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Проверка (GitHub-hosted)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - name: Конфигурация NixOS вычисляется (aarch64, без сборки)
+        run: nix flake check --no-build
+      - name: secrets/secrets.yaml зашифрован (все значения ENC[...])
+        run: |
+          sudo apt-get install -y --no-install-recommends python3-yaml
+          python3 scripts/check-secrets-encrypted.py secrets/secrets.yaml
+
+  secret-scan:
+    name: Поиск секретов (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # Бинарник gitleaks закреплён версией и sha256; вся история (включая merge-диффы)
+      # сканируется напрямую, плюс текущее дерево. Action не годится: он пропускает merge-коммиты.
+      - name: gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/gitleaks.tgz" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/gitleaks.tgz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" git --no-banner --redact -v --log-opts="--all --full-history --diff-merges=separate" .
+          "$RUNNER_TEMP/gitleaks" dir --no-banner --redact -v .
+
+  deploy:
+    name: Деплой на rpi4 (self-hosted)
+    needs: [check, secret-scan]
+    # Пока раннер не включён (см. README), задача не должна висеть в очереди:
+    # Settings → Secrets and variables → Actions → Variables: RPI_RUNNER_ENABLED=true
+    if: vars.RPI_RUNNER_ENABLED == 'true'
+    runs-on: [self-hosted, rpi4]
+    steps:
+      # Деплой всегда применяет текущий main (как и ночное автообновление), а не
+      # конкретный SHA: проверки выше — барьер для этого запуска, не гарантия
+      # для коммитов, пришедших позже. Правило polkit разрешает пользователю раннера
+      # ровно одно действие: запустить nixos-upgrade.service
+      # (nixos-rebuild switch --refresh --flake github:<repo>#rpi4). Репозиторий не
+      # клонируется: Pi сама забирает main из GitHub.
+      - name: Применить конфигурацию (switch)
+        run: /run/current-system/sw/bin/rpi4-deploy

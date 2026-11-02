@@ -18,6 +18,6 @@
     runner.enable = lib.mkEnableOption ''
       self-hosted GitHub Actions runner на этой Pi (деплой по push в main).
       Требует секрет github-runner-token (fine-grained PAT) в secrets/secrets.yaml —
-      см. README. Даёт раннеру root-эквивалентный доступ через sudo'';
+      см. README. Раннер получает право (через polkit) запускать nixos-upgrade.service'';
   };
 }
