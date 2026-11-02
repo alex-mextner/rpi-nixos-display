@@ -13,6 +13,14 @@
   # Графика VideoCore VI (Mesa v3d/vc4) для Chromium под Wayland.
   hardware.graphics.enable = true;
 
+  # Стабильное имя образа для CI/скрипта прошивки: rpi4-kiosk.img.zst
+  # (по умолчанию в имени версия и дата, и путь к артефакту каждый раз разный).
+  image.baseName = "rpi4-kiosk";
+
+  # Сжатый swap в ОЗУ: Pi 4 бывает с 2 ГБ, а k3s + Chromium + ночной nixos-rebuild
+  # (вычисление flake) иначе рискуют упереться в OOM-killer. На SD-карту не пишет.
+  zramSwap.enable = true;
+
   # ZFS не используется; явное значение убирает предупреждение nixpkgs 26.05.
   boot.zfs.forceImportRoot = false;
 

@@ -1,0 +1,64 @@
+# Сборка готового образа SD-карты (NixOS + наша конфигурация rpi4) на ARM64-раннере GitHub.
+#
+# БЕЗОПАСНОСТЬ (репозиторий публичный):
+#   * триггеры ТОЛЬКО ручной запуск и push в служебную ветку ci/sd-image-test (для проверки
+#     самого workflow; писать в ветки могут только участники репозитория);
+#   * НЕЛЬЗЯ добавлять pull_request / pull_request_target и т. п. — код из форка не должен
+#     исполняться ни здесь, ни где-либо ещё;
+#   * секретов у задачи нет: в образе нет ни host-ключа, ни расшифрованных секретов
+#     (secrets/secrets.yaml лежит в образе только в зашифрованном виде, как и в репозитории);
+#   * сторонние actions закреплены по SHA.
+#
+# Результат — артефакт rpi4-sd-image: rpi4-kiosk.img.zst + .sha256 (хранится 3 дня).
+# Как скачать и прошить — раздел «Прошивка готового образа» в README.
+name: build-image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ci/sd-image-test]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-image
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Сборка sdImage (aarch64, нативный ARM64-раннер)
+    # Бесплатный GitHub-hosted ARM64-раннер для публичных репозиториев (GA с 2025-08).
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - name: Сборка образа
+        run: nix build --print-build-logs --no-link --print-out-paths .#nixosConfigurations.rpi4.config.system.build.sdImage > "$RUNNER_TEMP/image-out-path"
+      - name: Подготовка артефакта (образ уже сжат zstd самим модулем sd-image)
+        run: |
+          set -euo pipefail
+          out="$(cat "$RUNNER_TEMP/image-out-path")"
+          mkdir -p dist
+          # Имя файла задаёт image.baseName в nixos/hardware.nix
+          cp "$out/sd-image/rpi4-kiosk.img.zst" dist/rpi4-kiosk.img.zst
+          cd dist
+          zstd --test rpi4-kiosk.img.zst
+          sha256sum rpi4-kiosk.img.zst | tee rpi4-kiosk.img.zst.sha256
+          ls -l
+          df -h /
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rpi4-sd-image
+          path: |
+            dist/rpi4-kiosk.img.zst
+            dist/rpi4-kiosk.img.zst.sha256
+          retention-days: 3
+          compression-level: 0
+          if-no-files-found: error
