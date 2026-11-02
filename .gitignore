@@ -7,3 +7,32 @@ result-*
 
 # Ignore NixOS interactive test driver history
 **/.nixos-test-history
+
+# ── Секреты: плейнтекст в репозиторий попадать не должен ────────────────────
+# Единственный разрешённый файл с секретами — зашифрованный sops secrets/secrets.yaml.
+secrets/*
+!secrets/secrets.yaml
+# Расшифрованные копии, временные файлы редакторов sops
+*.dec
+*.dec.*
+*.decrypted*
+*.plain.*
+*.secret
+*.secrets
+.env
+.env.*
+# age- и SSH-ключи (публичные keys/*.pub — можно)
+keys.txt
+age-keys*.txt
+*.age
+*.agekey
+*.pem
+*.key
+id_*
+!id_*.pub
+ssh_host_*
+!ssh_host_*.pub
+# Kubeconfig с клиентскими сертификатами
+kubeconfig
+k3s.yaml
+*.kubeconfig
