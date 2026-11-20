@@ -1,5 +1,7 @@
 # rpi-nixos-display
 
+> **Перенесено.** Конфигурация этой Pi теперь в [alex-mextner/ha-configs-rs-bg-spomenik, `machines/rpi4`](https://github.com/alex-mextner/ha-configs-rs-bg-spomenik/tree/main/machines/rpi4) (киоск с автологином Home Assistant, без k3s и ArgoCD). Автообновление Pi смотрит туда же; этот репозиторий больше не обновляется, описание ниже — история.
+
 GitOps-конфигурация Raspberry Pi 4 на NixOS 26.05:
 
 - **киоск**: `cage` (Wayland) + Chromium на весь экран, URL задаётся одной опцией;
